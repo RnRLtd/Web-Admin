@@ -1,3 +1,4 @@
+// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAwqSchQXSj-9q3PCOY0o8vrq7tKMuCYAs",
   authDomain: "r-n-r-38dc8.firebaseapp.com",
@@ -7,112 +8,134 @@ const firebaseConfig = {
   appId: "1:425320845657:web:8746d14fa263f924953c48",
   measurementId: "G-N42FBSYVHF"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const CLOUD_NAME = 'dlpriivm2';
-const UPLOAD_PRESET = 'web_preset';
+let products = [];
+let cart = [];
 
-document.getElementById("uploadForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+async function loadProducts() {
+  const snapshot = await db.collection("shopItems").orderBy("name").get();
+  products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderProducts();
+}
 
-  const name = document.getElementById("name").value.trim();
-  const price = parseFloat(document.getElementById("price").value);
-  const description = document.getElementById("description").value.trim();
-  const category = document.getElementById("category").value;
-  const file = document.getElementById("imageInput").files[0];
+function renderProducts(filter = "", category = "all") {
+  const container = document.getElementById("products");
+  container.innerHTML = "";
+  
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(filter.toLowerCase()) &&
+    (category === "all" || p.category === category)
+  );
 
-  if (!name || isNaN(price) || !category || !file) {
-    alert("Please fill all required fields and choose an image.");
-    return;
-  }
-
-  try {
-    // Compress the image
-    const compressedBlob = await compressImage(file, 0.6); // 60% quality
-    const formData = new FormData();
-    formData.append("file", compressedBlob);
-    formData.append("upload_preset", UPLOAD_PRESET);
-
-    const cloudinaryRes = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-      method: "POST",
-      body: formData
+  filtered.forEach(product => {
+    const card = document.createElement("div");
+    card.className = "product-card";
+    card.innerHTML = `
+      <img src="${product.imageUrl}" alt="${product.name}" class="product-img" />
+      <div class="product-info">
+        <h3>${product.name}</h3>
+        <p>₹${product.price}</p>
+        <button class="add-to-cart" onclick="addToCart('${product.id}')">Add to Cart</button>
+      </div>
+    `;
+    card.addEventListener("click", (e) => {
+      if (!e.target.classList.contains("add-to-cart")) {
+        showProductModal(product.name, product.description, product.price);
+      }
     });
-
-    const data = await cloudinaryRes.json();
-
-    if (data.error) {
-      console.error("Cloudinary error:", data.error.message);
-      return alert("Image upload failed: " + data.error.message);
-    }
-
-    if (!data.secure_url) {
-      console.error("Upload failed. Full response:", data);
-      return alert("Image upload failed. Please try again.");
-    }
-
-    await db.collection("shopItems").add({
-      name,
-      price,
-      description,
-      category,
-      imageUrl: data.secure_url,
-      publicId: data.public_id,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    alert("Item uploaded successfully!");
-    e.target.reset();
-    document.getElementById("preview").innerHTML = "";
-
-  } catch (err) {
-    console.error("Upload failed:", err);
-    alert("Something went wrong. Please try again.");
-  }
-});
-
-// Compress image using canvas
-async function compressImage(file, quality = 0.7) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxWidth = 1024;
-        const scaleSize = maxWidth / img.width;
-        canvas.width = maxWidth;
-        canvas.height = img.height * scaleSize;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          (blob) => {
-            resolve(blob);
-          },
-          'image/jpeg',
-          quality
-        );
-      };
-      img.src = event.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    container.appendChild(card);
   });
 }
 
-// Optional preview
-document.getElementById("imageInput").addEventListener("change", function () {
-  const file = this.files[0];
-  const preview = document.getElementById("preview");
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      preview.innerHTML = `<img src="${e.target.result}" width="150" style="margin-top:10px;border-radius:8px;" />`;
-    };
-    reader.readAsDataURL(file);
-  } else {
-    preview.innerHTML = "";
+function addToCart(productId) {
+  const product = products.find(p => p.id === productId);
+  if (product) {
+    cart.push(product);
+    updateCart();
   }
+}
+
+function removeFromCart(index) {
+  cart.splice(index, 1);
+  updateCart();
+}
+
+function updateCart() {
+  const cartItems = document.getElementById("cartItems");
+  const cartCount = document.getElementById("cartCount");
+  const cartTotal = document.getElementById("cartTotal");
+
+  cartItems.innerHTML = "";
+  let total = 0;
+
+  cart.forEach((item, index) => {
+    total += parseFloat(item.price);
+    const div = document.createElement("div");
+    div.innerHTML = `
+      ${item.name} - ₹${item.price}
+      <button class="remove-btn" onclick="removeFromCart(${index})">Remove</button>
+    `;
+    cartItems.appendChild(div);
+  });
+
+  cartCount.textContent = cart.length;
+  cartTotal.textContent = `₹${total.toFixed(2)}`;
+}
+
+// === Modal Show Function ===
+function showProductModal(name, description, price=0) {
+  document.getElementById("modalProductName").textContent = name;
+  document.getElementById("modalProductDesc").textContent = description || "No description available.";
+  document.getElementById("modalProductPrice").textContent = `₹${price}`;
+  document.getElementById("productModal").style.display = "flex";
+}
+
+// === Modal Close Handler ===
+document.getElementById("closeProductModal").onclick = () => {
+  document.getElementById("productModal").style.display = "none";
+};
+
+document.getElementById("cartBtn").onclick = () => {
+  document.getElementById("cartSidebar").classList.add("active");
+};
+
+document.getElementById("closeCart").onclick = () => {
+  document.getElementById("cartSidebar").classList.remove("active");
+};
+
+document.getElementById("checkoutBtn").onclick = () => {
+  document.getElementById("checkoutModal").style.display = "flex";
+};
+
+document.getElementById("closeCheckoutModal").onclick = () => {
+  document.getElementById("checkoutModal").style.display = "none";
+};
+
+
+document.getElementById("checkoutForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+  const total = cart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+  const name = document.getElementById("userName").value.trim();
+  if (total === 0) {
+    alert("Your cart is empty!");
+    return;
+  }
+  const upiUrl = `upi://pay?pa=dinzd145@oksbi&pn=${encodeURIComponent(name)}&am=${total}&cu=INR`;
+  window.location.href = upiUrl;
 });
+
+document.getElementById("searchIcon").onclick = () => {
+  const filter = document.getElementById("searchInput").value;
+  const category = document.getElementById("categorySelect").value;
+  renderProducts(filter, category);
+};
+
+document.getElementById("categorySelect").onchange = () => {
+  const filter = document.getElementById("searchInput").value;
+  const category = document.getElementById("categorySelect").value;
+  renderProducts(filter, category);
+};
+
+window.onload = loadProducts;
