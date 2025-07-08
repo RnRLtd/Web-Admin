@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Orders</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .order-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .order-card h3 {
+      margin-top: 0;
+    }
+
+    .order-card ul {
+      padding-left: 20px;
+    }
+
+    .order-card button {
+      margin-right: 10px;
+      margin-top: 10px;
+      padding: 5px 12px;
+      border: none;
+      border-radius: 5px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+
+    .order-card button:hover {
+      background-color: #0056b3;
+    }
+
+    .order-card .location {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .order-card .location a {
+      color: #007bff;
+      text-decoration: none;
+    }
+
+    .order-card .location a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <h1>Admin Order Management</h1>
+  <div id="ordersContainer"></div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAwqSchQXSj-9q3PCOY0o8vrq7tKMuCYAs",
+      authDomain: "r-n-r-38dc8.firebaseapp.com",
+      projectId: "r-n-r-38dc8",
+      storageBucket: "r-n-r-38dc8.appspot.com",
+      messagingSenderId: "425320845657",
+      appId: "1:425320845657:web:8746d14fa263f924953c48",
+      measurementId: "G-N42FBSYVHF"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const ordersContainer = document.getElementById("ordersContainer");
+
+    function fetchOrders() {
+      db.collection("orders").orderBy("createdAt", "desc").onSnapshot(snapshot => {
+        ordersContainer.innerHTML = "";
+
+        snapshot.forEach(doc => {
+          const order = doc.data();
+          const id = doc.id;
+
+          if (order.status === "delivered") return;
+
+          // Prepare location link
+          let locationHTML = "";
+          if (order.location && order.location.lat && order.location.lng) {
+            const mapUrl = `https://www.google.com/maps?q=${order.location.lat},${order.location.lng}`;
+            locationHTML = `
+              <div class="location">
+                <p><strong>State:</strong> ${order.state || "N/A"}</p>
+                <p><strong>Town/Village:</strong> ${order.town || "N/A"}</p>
+                <p><strong>Landmark:</strong> ${order.landmark || "N/A"}</p>
+                <p><a href="${mapUrl}" target="_blank">📍 Mark Location</a></p>
+              </div>
+            `;
+          }
+
+          const div = document.createElement("div");
+          div.className = "order-card";
+          div.setAttribute("id", `order-${id}`);
+          div.innerHTML = `
+            <h3>${order.customerName} (${order.customerEmail})</h3>
+            <p><strong>Total:</strong> ₹${order.total}</p>
+            <p><strong>Status:</strong> <span id="status-${id}">${order.status}</span></p>
+            <ul>${order.items.map(item => `<li>${item.name} - ₹${item.price}</li>`).join("")}</ul>
+            ${locationHTML}
+            <button onclick="updateOrderStatus('${id}', 'delivered')">Delivered</button>
+            <button onclick="updateOrderStatus('${id}', 'delayed')">Delayed</button>
+            <button onclick="updateOrderStatus('${id}', 'ontrack')">On Track</button>
+          `;
+          ordersContainer.appendChild(div);
+        });
+      });
+    }
+
+    function updateOrderStatus(orderId, status) {
+      db.collection("orders").doc(orderId).update({ status })
+        .then(() => {
+          if (status === "delivered") {
+            const orderCard = document.getElementById(`order-${orderId}`);
+            if (orderCard) orderCard.remove();
+          } else {
+            document.getElementById(`status-${orderId}`).textContent = status;
+          }
+          console.log(`Order ${orderId} updated to ${status}`);
+        })
+        .catch(error => {
+          console.error("Failed to update status:", error);
+        });
+    }
+
+    window.addEventListener("DOMContentLoaded", fetchOrders);
+  </script>
+</body>
+</html>
