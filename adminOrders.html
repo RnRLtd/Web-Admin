@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin - Orders</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    h2 {
+      color: #333;
+    }
+    .order-card {
+      background: white;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .order-item {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+    }
+    .order-total {
+      font-weight: bold;
+      margin-top: 10px;
+      text-align: right;
+    }
+    select {
+      padding: 5px;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .address-btn {
+      background-color: #2196F3;
+    }
+    .address-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .address-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 500px;
+      width: 90%;
+    }
+    .close-address {
+      float: right;
+      cursor: pointer;
+      font-size: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Links -->
+  <div style="margin-bottom: 20px;">
+    <a href="adminHome.html" style="margin-right: 15px;">Manage Products</a>
+    <a href="adminOrders.html">View Orders</a>
+  </div>
+
+  <h2>Customer Orders</h2>
+  <div id="ordersList"></div>
+
+  <!-- Address Modal -->
+  <div id="addressModal" class="address-modal">
+    <div class="address-content">
+      <span class="close-address">&times;</span>
+      <h3>Delivery Info</h3>
+      <div id="addressDetails"></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAwqSchQXSj-9q3PCOY0o8vrq7tKMuCYAs",
+      authDomain: "r-n-r-38dc8.firebaseapp.com",
+      projectId: "r-n-r-38dc8",
+      storageBucket: "r-n-r-38dc8.appspot.com",
+      messagingSenderId: "425320845657",
+      appId: "1:425320845657:web:8746d14fa263f924953c48",
+      measurementId: "G-N42FBSYVHF"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
+    let firstLoad = true;
+
+    db.collection("orders")
+      .orderBy("createdAt", "desc")
+      .onSnapshot(async snapshot => {
+        if (!firstLoad && snapshot.docChanges().some(change => change.type === "added")) {
+          const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
+          audio.play();
+
+          if (Notification.permission === "granted") {
+            new Notification("New Order Received", {
+              body: "A customer has placed a new order"
+            });
+          }
+        }
+        firstLoad = false;
+
+        const ordersList = document.getElementById("ordersList");
+        ordersList.innerHTML = "";
+
+        for (const doc of snapshot.docs) {
+          const order = doc.data();
+          const orderId = doc.id;
+
+          const orderCard = document.createElement("div");
+          orderCard.className = "order-card";
+
+          let itemsHTML = "";
+          order.items.forEach(item => {
+            itemsHTML += `
+              <div class="order-item">
+                <span>${item.name} (₹${item.price})</span>
+                <span>Qty: ${item.quantity || 1}</span>
+              </div>
+            `;
+          });
+
+          // Fetch user profile by UID or email
+          let profile = {};
+          try {
+            if (order.uid) {
+              const userDoc = await db.collection("users").doc(order.uid).get();
+              if (userDoc.exists) profile = userDoc.data();
+            } else if (order.customerEmail) {
+              const snap = await db.collection("users").where("email", "==", order.customerEmail).limit(1).get();
+              if (!snap.empty) profile = snap.docs[0].data();
+            }
+          } catch (e) {
+            console.warn("Failed to load user profile:", e);
+          }
+
+          const locationLink = profile.markLocation
+            ? `<p><strong>📍 Location:</strong> <a href="https://www.google.com/maps?q=${profile.markLocation}" target="_blank">${profile.markLocation}</a></p>`
+            : "";
+
+          const addressHTML = `
+            <p><strong>Name:</strong> ${order.customerName}</p>
+            <p><strong>Phone:</strong> ${profile.phone || "Not provided"}</p>
+            <p><strong>State:</strong> ${profile.state || "Not provided"}</p>
+            <p><strong>Town/Village:</strong> ${profile.town || "Not provided"}</p>
+            <p><strong>Landmark:</strong> ${profile.landmark || "Not provided"}</p>
+            ${locationLink}
+          `;
+
+          orderCard.innerHTML = `
+            <div class="order-header">
+              <div>
+                <strong>Order #${orderId}</strong><br>
+                Customer: ${order.customerName}<br>
+                Email: ${order.customerEmail}
+              </div>
+              <div>
+                <select id="status-${orderId}">
+                  <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Pending</option>
+                  <option value="processing" ${order.status === 'processing' ? 'selected' : ''}>Processing</option>
+                  <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>Completed</option>
+                  <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                </select>
+                <button onclick="updateOrderStatus('${orderId}')">Update</button>
+                <button class="address-btn" onclick='showAddress(\`${addressHTML}\`)'>View Info</button>
+              </div>
+            </div>
+            ${itemsHTML}
+            <div class="order-total">
+              Total: ₹${order.total}
+            </div>
+          `;
+
+          ordersList.appendChild(orderCard);
+        }
+      });
+
+    function updateOrderStatus(orderId) {
+      const status = document.getElementById(`status-${orderId}`).value;
+
+      db.collection("orders").doc(orderId).update({
+        status,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        alert("Order status updated successfully");
+      }).catch(err => {
+        console.error("Error updating status:", err);
+        alert("Failed to update order status.");
+      });
+    }
+
+    function showAddress(html) {
+      const modal = document.getElementById("addressModal");
+      document.getElementById("addressDetails").innerHTML = html;
+      modal.style.display = "flex";
+    }
+
+    document.querySelector(".close-address").addEventListener("click", () => {
+      document.getElementById("addressModal").style.display = "none";
+    });
+
+    window.addEventListener("click", function(event) {
+      if (event.target === document.getElementById("addressModal")) {
+        document.getElementById("addressModal").style.display = "none";
+      }
+    });
+
+    // Expose to global
+    window.updateOrderStatus = updateOrderStatus;
+    window.showAddress = showAddress;
+  </script>
+</body>
+</html>
